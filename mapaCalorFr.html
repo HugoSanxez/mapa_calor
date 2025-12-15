@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Carte de chaleur acoustique - Villes universitaires d’Estrémadure</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+  body {
+    margin: 0;
+    background-color: #e5e7eb;
+    font-family: 'Segoe UI', sans-serif;
+    color: #111827;
+  }
+  h1 {
+    text-align: center;
+    margin: 12px 0;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  #selector {
+    display: flex;
+    justify-content: center;
+    align-items: center; /* 🔹 Alinea verticalmente label y select */
+    gap: 8px;            /* 🔹 Espacio entre ellos */
+    margin: 10px;
+  }
+  select {
+    padding: 6px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+  }
+  #map {
+    width: 100%;
+    height: calc(100vh - 80px); /* 🔹 Ocupa toda la pantalla menos el título y selector */
+  }
+  .legend {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 14px;
+    border-radius: 16px;
+    line-height: 1.6;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    font-size: 13px;
+    color: #111827;
+    pointer-events: auto;
+    position: absolute;   /* 🔹 flotante, no empuja el mapa */
+    bottom: 20px;         /* 🔹 separado del borde */
+    right: 20px;
+    z-index: 1000;
+  }
+  .legend h4 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+  }
+  .legend-item.active {
+    font-weight: bold;
+    background-color: #f3f4f6;
+  }
+  .legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+  }
+</style>
+
+</head>
+
+<body>
+  <h1>Carte de chaleur acoustique · Villes universitaires d’Estrémadure</h1>
+
+  <!-- Selector de ciudades -->
+  <div id="selector">
+    <label for="ciudad">Aller à la ville: </label>
+    <select id="ciudad">
+      <option value="Cáceres">Cáceres</option>
+      <option value="Plasencia">Plasencia</option>
+      <option value="Mérida">Mérida</option>
+      <option value="Badajoz">Badajoz</option>
+    </select>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    // =============================
+    // 1. MAPA BASE
+    // =============================
+    const map = L.map('map').setView([39.474, -6.372], 13); // Empieza en Cáceres
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; OpenStreetMap contributors' }
+    ).addTo(map);
+
+    // =============================
+    // 2. FUNCIONES DE RUIDO
+    // =============================
+    function generarRuidoNatural(numPuntos, intensidadBase, latCentro, lngCentro) {
+      const puntos = [];
+      for (let i = 0; i < numPuntos; i++) {
+        const angulo = Math.random() * Math.PI * 2;
+        const radio = Math.random() * 0.05;
+        let intensidad = intensidadBase + Math.random() * 0.3;
+        const lat = latCentro + Math.cos(angulo) * radio;
+        const lng = lngCentro + Math.sin(angulo) * radio;
+        puntos.push([lat, lng, intensidad]);
+      }
+      return puntos;
+    }
+    function dibujarZona(lat, lng, radio, color, opacidad) {
+      const deformacion = () => radio * (0.6 + Math.random() * 0.8);
+      return L.polygon([
+        [lat + deformacion()/111000, lng],
+        [lat, lng + deformacion()/111000],
+        [lat - deformacion()/111000, lng],
+        [lat, lng - deformacion()/111000],
+      ], { fillColor: color, fillOpacity: opacidad, stroke: false });
+    }
+
+    // =============================
+    // 3. CIUDADES Y CAPAS
+    // =============================
+    const ciudades = {
+      "Cáceres": [39.474, -6.372],
+      "Plasencia": [40.031, -6.088],
+      "Mérida": [38.919, -6.343],
+      "Badajoz": [38.879, -6.970]
+    };
+    const capas = {};
+
+    Object.entries(ciudades).forEach(([nombre, coords]) => {
+      const [lat, lng] = coords;
+      const ruidoBajo     = generarRuidoNatural(220, 0.25, lat, lng);
+      const ruidoModerado = generarRuidoNatural(180, 0.45, lat, lng);
+      const ruidoAlto     = generarRuidoNatural(140, 0.65, lat, lng);
+      const ruidoMuyAlto  = generarRuidoNatural(100, 0.85, lat, lng);
+      const ruidoExtremo  = generarRuidoNatural(70,  1.0, lat, lng);
+
+      capas[`${nombre} - Ruido Bajo`] = L.layerGroup(ruidoBajo.map(p => dibujarZona(p[0], p[1], 60, '#22c55e', 0.35)));
+      capas[`${nombre} - Ruido Moderado`] = L.layerGroup(ruidoModerado.map(p => dibujarZona(p[0], p[1], 70, '#eab308', 0.4)));
+      capas[`${nombre} - Ruido Alto`] = L.layerGroup(ruidoAlto.map(p => dibujarZona(p[0], p[1], 80, '#f97316', 0.45)));
+      capas[`${nombre} - Ruido Muy Alto`] = L.layerGroup(ruidoMuyAlto.map(p => dibujarZona(p[0], p[1], 90, '#ef4444', 0.5)));
+      capas[`${nombre} - Ruido Extremo`] = L.layerGroup(ruidoExtremo.map(p => dibujarZona(p[0], p[1], 100, '#b91c1c', 0.55)));
+    });
+
+    // Mostrar todas por defecto
+    Object.values(capas).forEach(capa => capa.addTo(map));
+
+   // =============================
+// 4. LEYENDA
+// =============================
+const legend = L.control({ position: 'bottomright' });
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div', 'legend');
+  div.innerHTML = `
+    <h4>Niveaux de bruit</h4>
+    <div class="legend-item" data-layer="Ruido Bajo"><span class="legend-color" style="background:#22c55e"></span> Faible</div>
+    <div class="legend-item" data-layer="Ruido Moderado"><span class="legend-color" style="background:#eab308"></span> Modéré</div>
+    <div class="legend-item" data-layer="Ruido Alto"><span class="legend-color" style="background:#f97316"></span> Élevé</div>
+    <div class="legend-item" data-layer="Ruido Muy Alto"><span class="legend-color" style="background:#ef4444"></span> Très élevé</div>
+    <div class="legend-item" data-layer="Ruido Extremo"><span class="legend-color" style="background:#b91c1c"></span> Extrême</div>
+  `;
+
+  // 🔹 Evita que los clics/doble clics en la leyenda afecten al mapa
+  L.DomEvent.disableClickPropagation(div);
+  L.DomEvent.disableScrollPropagation(div);
+
+  return div;
+};
+legend.addTo(map);
+
+
+    // =============================
+    // 5. LÓGICA DE SELECCIÓN/Deselección
+    // =============================
+    let capaActiva = null;
+    function toggleLayer(nombre) {
+      if (capaActiva === nombre) {
+        // Deselecciona → mostrar todas
+        Object.values(capas).forEach(capa => capa.addTo(map));
+                capaActiva = null;
+        document.querySelectorAll('.legend-item').forEach(item => item.classList.remove('active'));
+      } else {
+        // Quitar todas las capas
+        Object.values(capas).forEach(capa => map.removeLayer(capa));
+        // Añadir solo la seleccionada
+        Object.entries(capas).forEach(([key, capa]) => {
+          if (key.endsWith(nombre)) {
+            capa.addTo(map);
+          }
+        });
+        capaActiva = nombre;
+        // Actualizar estilos
+        document.querySelectorAll('.legend-item').forEach(item => {
+          if (item.getAttribute('data-layer') === nombre) {
+            item.classList.add('active');
+          } else {
+            item.classList.remove('active');
+          }
+        });
+      }
+    }
+
+    // Añadir eventos a los apartados de la leyenda
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.legend-item')) {
+        const nombre = e.target.closest('.legend-item').getAttribute('data-layer');
+        toggleLayer(nombre);
+      }
+    });
+
+    // =============================
+    // 6. SELECTOR DE CIUDADES
+    // =============================
+    document.getElementById("ciudad").addEventListener("change", function () {
+      const ciudadSeleccionada = this.value;
+      const coords = ciudades[ciudadSeleccionada];
+      if (coords) {
+        map.setView(coords, 13); // mueve el mapa a la ciudad elegida
+      }
+    });
+  </script>
+</body>
+</html>
